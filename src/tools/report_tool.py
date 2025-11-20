@@ -1,0 +1,1005 @@
+"""
+Report generation tool for creating Markdown and HTML reports.
+"""
+
+import json
+import os
+from datetime import datetime
+from typing import Dict, Any
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+
+def generate_markdown_report(results: Dict[str, Any], output_path: str = None) -> str:
+    """
+    Generate a Markdown report from analysis results.
+    
+    Args:
+        results: Dictionary containing analysis results from orchestrator
+        output_path: Optional path to save the report (if None, returns string only)
+    
+    Returns:
+        Markdown report as string
+    """
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    # Build markdown content
+    md_lines = [
+        "# Data Quality & Insights Report",
+        f"\n**Generated:** {timestamp}\n",
+        "---\n",
+    ]
+    
+    # Dataset Info
+    if 'dataset_info' in results:
+        info = results['dataset_info']
+        md_lines.extend([
+            "## Dataset Information\n",
+            f"- **Rows:** {info.get('rows', 'N/A')}",
+            f"- **Columns:** {info.get('columns', 'N/A')}",
+            f"- **File:** {info.get('filepath', 'N/A')}\n",
+        ])
+    
+    # Schema
+    if 'schema' in results:
+        md_lines.extend([
+            "## Schema\n",
+            "| Column | Data Type |",
+            "|--------|-----------|",
+        ])
+        for col, dtype in results['schema'].items():
+            md_lines.append(f"| {col} | {dtype} |")
+        md_lines.append("")
+    
+    # Schema Changes
+    if 'schema_changes' in results and results['schema_changes'].get('is_changed'):
+        changes = results['schema_changes']
+        md_lines.extend([
+            "## Schema Changes Detected\n",
+        ])
+        if changes.get('added_columns'):
+            md_lines.append(f"- **Added columns:** {', '.join(changes['added_columns'])}")
+        if changes.get('removed_columns'):
+            md_lines.append(f"- **Removed columns:** {', '.join(changes['removed_columns'])}")
+        if changes.get('changed_types'):
+            md_lines.append("- **Type changes:**")
+            for col, (old, new) in changes['changed_types'].items():
+                md_lines.append(f"  - {col}: {old} → {new}")
+        md_lines.append("")
+    
+    # QA Results
+    if 'qa_results' in results:
+        qa = results['qa_results']
+        md_lines.extend([
+            "## Data Quality Assessment\n",
+        ])
+        
+        # Missing values
+        if qa.get('missing_values'):
+            md_lines.append("### Missing Values\n")
+            for col, count in qa['missing_values'].items():
+                fraction = qa.get('null_fraction', {}).get(col, 0)
+                percentage = fraction * 100
+                md_lines.append(f"- **{col}:** {count} ({percentage:.2f}%)")
+            md_lines.append("")
+        else:
+            md_lines.append("✅ No missing values detected.\n")
+        
+        # Duplicates
+        duplicates = qa.get('duplicate_rows', 0)
+        if duplicates > 0:
+            md_lines.append(f"### Duplicate Rows\n\n⚠️ **{duplicates}** duplicate rows found.\n")
+        else:
+            md_lines.append("### Duplicate Rows\n\n✅ No duplicate rows detected.\n")
+    
+    # Anomaly Results
+    if 'anomaly_results' in results:
+        anomaly = results['anomaly_results']
+        md_lines.extend([
+            "## Anomaly Detection\n",
+        ])
+        
+        outliers = anomaly.get('outliers', {})
+        if outliers:
+            md_lines.append("### Outliers Detected\n")
+            for col, count in outliers.items():
+                md_lines.append(f"- **{col}:** {count} outliers")
+            md_lines.append("")
+        else:
+            md_lines.append("✅ No outliers detected.\n")
+        
+        # Summary stats
+        if 'summary_stats' in anomaly:
+            md_lines.append("### Summary Statistics\n")
+            for col, stats in anomaly['summary_stats'].items():
+                md_lines.append(f"**{col}:**")
+                md_lines.append(f"- Mean: {stats.get('mean', 'N/A'):.2f}")
+                md_lines.append(f"- Std: {stats.get('std', 'N/A'):.2f}")
+                md_lines.append(f"- Min: {stats.get('min', 'N/A'):.2f}, Max: {stats.get('max', 'N/A'):.2f}\n")
+    
+    # Insights
+    if 'insights' in results:
+        # Handle both dict (new format) and string (old format)
+        insights_text = results['insights']
+        if isinstance(insights_text, dict):
+            insights_text = insights_text.get('text', '')
+        
+        md_lines.extend([
+            "## Insights & Recommendations\n",
+            insights_text,
+            ""
+        ])
+    
+    # Recommendations
+    if 'recommendations' in results:
+        md_lines.extend([
+            "## Actionable Recommendations\n",
+        ])
+        for rec in results['recommendations']:
+            md_lines.append(f"- {rec}")
+        md_lines.append("")
+    
+    md_lines.append("---\n*Report generated by adqia (Auto Data QA & Insight Agent)*")
+    
+    markdown_content = "\n".join(md_lines)
+    
+    # Save to file if path provided
+    if output_path:
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(markdown_content)
+        logger.info(f"Markdown report saved to {output_path}")
+    
+    return markdown_content
+
+
+def generate_html_report(results: Dict[str, Any], output_path: str = None) -> str:
+    """
+    Generate an HTML report from analysis results with dark theme and proper HTML formatting.
+    
+    Args:
+        results: Dictionary containing analysis results
+        output_path: Optional path to save the report
+    
+    Returns:
+        HTML report as string
+    """
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    # Build HTML sections
+    html_sections = []
+    
+    # Dataset Info Section
+    if 'dataset_info' in results:
+        info = results['dataset_info']
+        html_sections.append(f"""
+        <section class="info-section">
+            <h2><span class="icon">📊</span> Dataset Information</h2>
+            <div class="info-grid">
+                <div class="info-card">
+                    <div class="info-label">Total Rows</div>
+                    <div class="info-value">{info.get('rows', 'N/A'):,}</div>
+                </div>
+                <div class="info-card">
+                    <div class="info-label">Total Columns</div>
+                    <div class="info-value">{info.get('columns', 'N/A')}</div>
+                </div>
+                <div class="info-card full-width">
+                    <div class="info-label">Source File</div>
+                    <div class="info-value small">{info.get('filepath', 'N/A')}</div>
+                </div>
+            </div>
+        </section>
+        """)
+    
+    # Schema Section
+    if 'schema' in results:
+        schema_rows = ''.join([
+            f"<tr><td><span class='column-name'>{col}</span></td><td><span class='data-type'>{dtype}</span></td></tr>" 
+            for col, dtype in results['schema'].items()
+        ])
+        html_sections.append(f"""
+        <section class="schema-section">
+            <h2><span class="icon">📋</span> Data Schema</h2>
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Column Name</th>
+                            <th>Data Type</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {schema_rows}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+        """)
+    
+    # QA Results Section
+    if 'qa_results' in results:
+        qa = results['qa_results']
+        
+        # Missing values
+        missing_html = ""
+        if qa.get('missing_values'):
+            missing_items = []
+            for col, count in qa['missing_values'].items():
+                frac = qa.get('null_fraction', {}).get(col, 0)
+                pct = frac * 100
+                severity_class = 'critical' if pct > 50 else 'warning' if pct > 20 else 'info'
+                missing_items.append(f"""
+                <div class="metric-item {severity_class}">
+                    <div class="metric-column">{col}</div>
+                    <div class="metric-value">{count} missing ({pct:.2f}%)</div>
+                </div>
+                """)
+            missing_html = f"""
+            <div class="qa-subsection">
+                <h3>Missing Values</h3>
+                <div class="metrics-list">
+                    {''.join(missing_items)}
+                </div>
+            </div>
+            """
+        else:
+            missing_html = """
+            <div class="qa-subsection">
+                <h3>Missing Values</h3>
+                <div class="status-badge success">No missing values detected</div>
+            </div>
+            """
+        
+        # Duplicates
+        duplicates = qa.get('duplicate_rows', 0)
+        if duplicates > 0:
+            duplicates_html = f"""
+            <div class="qa-subsection">
+                <h3>Duplicate Rows</h3>
+                <div class="status-badge warning">{duplicates} duplicate rows found</div>
+            </div>
+            """
+        else:
+            duplicates_html = """
+            <div class="qa-subsection">
+                <h3>Duplicate Rows</h3>
+                <div class="status-badge success">No duplicate rows</div>
+            </div>
+            """
+        
+        html_sections.append(f"""
+        <section class="qa-section">
+            <h2><span class="icon">✅</span> Data Quality Assessment</h2>
+            {missing_html}
+            {duplicates_html}
+        </section>
+        """)
+    
+    # Anomaly Results Section
+    if 'anomaly_results' in results:
+        anom = results['anomaly_results']
+        
+        if anom.get('outliers'):
+            outlier_items = []
+            for col, count in anom['outliers'].items():
+                outlier_items.append(f"""
+                <div class="metric-item warning">
+                    <div class="metric-column">{col}</div>
+                    <div class="metric-value">{count} outlier(s)</div>
+                </div>
+                """)
+            outliers_html = f"""
+            <div class="metrics-list">
+                {''.join(outlier_items)}
+            </div>
+            """
+        else:
+            outliers_html = '<div class="status-badge success">No outliers detected</div>'
+        
+        html_sections.append(f"""
+        <section class="anomaly-section">
+            <h2><span class="icon">🔎</span> Anomaly Detection</h2>
+            {outliers_html}
+        </section>
+        """)
+    
+    # Insights Section
+    if 'insights' in results:
+        insights_data = results['insights']
+        if isinstance(insights_data, dict):
+            insights_text = insights_data.get('text', '')
+            source = insights_data.get('source', 'unknown')
+            gen_time = insights_data.get('generation_time', 0)
+            
+            source_badge_class = 'gemini' if source == 'gemini' else 'rule-based'
+            source_label = 'Gemini AI' if source == 'gemini' else 'Rule-Based Analysis'
+            
+            badge_html = f"""
+            <div class="source-badge {source_badge_class}">
+                <span class="badge-label">{source_label}</span>
+                <span class="badge-time">Generated in {gen_time:.2f}s</span>
+            </div>
+            """
+        else:
+            insights_text = insights_data
+            badge_html = ""
+        
+        # Convert markdown-style formatting to HTML
+        insights_html = insights_text.replace('\n\n', '</p><p>')
+        insights_html = insights_html.replace('\n', '<br>')
+        
+        # Remove special characters and convert to proper HTML
+        insights_html = insights_html.replace('**', '<strong>').replace('**', '</strong>')
+        insights_html = insights_html.replace('⚠️', '<span class="emoji warning">⚠️</span>')
+        insights_html = insights_html.replace('✅', '<span class="emoji success">✅</span>')
+        insights_html = insights_html.replace('💡', '<span class="emoji info">💡</span>')
+        
+        html_sections.append(f"""
+        <section class="insights-section">
+            <h2><span class="icon">💡</span> Insights & Analysis</h2>
+            {badge_html}
+            <div class="insights-content">
+                <p>{insights_html}</p>
+            </div>
+        </section>
+        """)
+    
+    # Recommendations Section
+    if 'recommendations' in results and results['recommendations']:
+        rec_items = ''.join([f'<li class="recommendation-item">{rec}</li>' for rec in results['recommendations']])
+        html_sections.append(f"""
+        <section class="recommendations-section">
+            <h2><span class="icon">🎯</span> Actionable Recommendations</h2>
+            <ul class="recommendations-list">
+                {rec_items}
+            </ul>
+        </section>
+        """)
+    
+    # Complete HTML document with dark theme
+    html_content = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Data Quality Report - adqia</title>
+    <style>
+        * {{
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }}
+        
+        body {{
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            color: #e2e8f0;
+            line-height: 1.6;
+            padding: 20px;
+            min-height: 100vh;
+        }}
+        
+        .container {{
+            max-width: 1200px;
+            margin: 0 auto;
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            border-radius: 16px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(148, 163, 184, 0.1);
+        }}
+        
+        h1 {{
+            color: #f1f5f9;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, #a855f7 0%, #3b82f6 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            font-weight: 700;
+        }}
+        
+        .timestamp {{
+            color: #94a3b8;
+            font-size: 0.95em;
+            margin-bottom: 40px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid rgba(148, 163, 184, 0.2);
+        }}
+        
+        section {{
+            margin: 30px 0;
+            padding: 25px;
+            background: rgba(30, 41, 59, 0.5);
+            border-radius: 12px;
+            border-left: 4px solid #3b82f6;
+            backdrop-filter: blur(10px);
+        }}
+        
+        h2 {{
+            color: #f1f5f9;
+            font-size: 1.8em;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }}
+        
+        h3 {{
+            color: #cbd5e1;
+            font-size: 1.3em;
+            margin: 20px 0 15px 0;
+        }}
+        
+        .icon {{
+            font-size: 1.2em;
+        }}
+        
+        .info-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }}
+        
+        .info-card {{
+            background: linear-gradient(135deg, #334155 0%, #1e293b 100%);
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+        }}
+        
+        .info-card.full-width {{
+            grid-column: 1 / -1;
+        }}
+        
+        .info-label {{
+            color: #94a3b8;
+            font-size: 0.9em;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }}
+        
+        .info-value {{
+            color: #f1f5f9;
+            font-size: 1.8em;
+            font-weight: 600;
+        }}
+        
+        .info-value.small {{
+            font-size: 1.1em;
+            word-break: break-all;
+        }}
+        
+        .table-container {{
+            overflow-x: auto;
+            margin-top: 20px;
+            border-radius: 8px;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+        }}
+        
+        .data-table {{
+            width: 100%;
+            border-collapse: collapse;
+            background: rgba(15, 23, 42, 0.5);
+        }}
+        
+        .data-table thead {{
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+        }}
+        
+        .data-table th {{
+            padding: 15px;
+            text-align: left;
+            color: #ffffff;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.85em;
+            letter-spacing: 0.5px;
+        }}
+        
+        .data-table td {{
+            padding: 12px 15px;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+            color: #e2e8f0;
+        }}
+        
+        .data-table tbody tr:hover {{
+            background: rgba(59, 130, 246, 0.1);
+        }}
+        
+        .column-name {{
+            color: #a78bfa;
+            font-weight: 500;
+        }}
+        
+        .data-type {{
+            color: #60a5fa;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }}
+        
+        .qa-subsection {{
+            margin: 20px 0;
+        }}
+        
+        .metrics-list {{
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 15px;
+        }}
+        
+        .metric-item {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 15px;
+            background: rgba(15, 23, 42, 0.5);
+            border-radius: 8px;
+            border-left: 3px solid;
+        }}
+        
+        .metric-item.critical {{
+            border-color: #ef4444;
+            background: rgba(239, 68, 68, 0.1);
+        }}
+        
+        .metric-item.warning {{
+            border-color: #f59e0b;
+            background: rgba(245, 158, 11, 0.1);
+        }}
+        
+        .metric-item.info {{
+            border-color: #3b82f6;
+            background: rgba(59, 130, 246, 0.1);
+        }}
+        
+        .metric-column {{
+            color: #cbd5e1;
+            font-weight: 500;
+        }}
+        
+        .metric-value {{
+            color: #f1f5f9;
+            font-weight: 600;
+        }}
+        
+        .status-badge {{
+            display: inline-block;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: 600;
+            margin-top: 10px;
+        }}
+        
+        .status-badge.success {{
+            background: rgba(34, 197, 94, 0.2);
+            color: #4ade80;
+            border: 1px solid rgba(34, 197, 94, 0.3);
+        }}
+        
+        .status-badge.warning {{
+            background: rgba(245, 158, 11, 0.2);
+            color: #fbbf24;
+            border: 1px solid rgba(245, 158, 11, 0.3);
+        }}
+        
+        .source-badge {{
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 0.9em;
+        }}
+        
+        .source-badge.gemini {{
+            background: linear-gradient(135deg, rgba(168, 85, 247, 0.2) 0%, rgba(139, 92, 246, 0.2) 100%);
+            border: 1px solid rgba(168, 85, 247, 0.4);
+        }}
+        
+        .source-badge.rule-based {{
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(37, 99, 235, 0.2) 100%);
+            border: 1px solid rgba(59, 130, 246, 0.4);
+        }}
+        
+        .badge-label {{
+            color: #f1f5f9;
+            font-weight: 600;
+        }}
+        
+        .badge-time {{
+            color: #94a3b8;
+        }}
+        
+        .insights-content {{
+            background: rgba(15, 23, 42, 0.5);
+            padding: 25px;
+            border-radius: 10px;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            line-height: 1.8;
+        }}
+        
+        .insights-content p {{
+            margin-bottom: 15px;
+            color: #cbd5e1;
+        }}
+        
+        .insights-content strong {{
+            color: #f1f5f9;
+            font-weight: 600;
+        }}
+        
+        .emoji {{
+            display: inline-block;
+            margin-right: 5px;
+        }}
+        
+        .emoji.warning {{
+            color: #fbbf24;
+        }}
+        
+        .emoji.success {{
+            color: #4ade80;
+        }}
+        
+        .emoji.info {{
+            color: #60a5fa;
+        }}
+        
+        .recommendations-list {{
+            list-style: none;
+            margin-top: 20px;
+        }}
+        
+        .recommendation-item {{
+            padding: 15px;
+            margin: 10px 0;
+            background: rgba(15, 23, 42, 0.5);
+            border-left: 3px solid #a855f7;
+            border-radius: 8px;
+            color: #cbd5e1;
+        }}
+        
+        .recommendation-item::before {{
+            content: "→";
+            color: #a855f7;
+            font-weight: bold;
+            margin-right: 10px;
+        }}
+        
+        .footer {{
+            margin-top: 50px;
+            padding-top: 30px;
+            border-top: 2px solid rgba(148, 163, 184, 0.2);
+            text-align: center;
+            color: #64748b;
+        }}
+        
+        .footer strong {{
+            background: linear-gradient(135deg, #a855f7 0%, #3b82f6 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Data Quality & Insights Report</h1>
+        <p class="timestamp">Generated: {timestamp}</p>
+        
+        {''.join(html_sections)}
+        
+        <div class="footer">
+            <p>Report generated by <strong>adqia</strong> (Auto Data QA & Insight Agent)</p>
+        </div>
+    </div>
+</body>
+</html>
+"""
+    
+    if output_path:
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(html_content)
+        logger.info(f"HTML report saved to {output_path}")
+    
+    return html_content
+    
+    # Build HTML with proper structure
+    html_parts = []
+    
+    # Dataset Info
+    if 'dataset_info' in results:
+        info = results['dataset_info']
+        html_parts.append(f"""
+        <div class="section">
+            <h2>📊 Dataset Information</h2>
+            <ul>
+                <li><strong>Rows:</strong> {info.get('rows', 'N/A'):,}</li>
+                <li><strong>Columns:</strong> {info.get('columns', 'N/A')}</li>
+                <li><strong>File:</strong> {info.get('filepath', 'N/A')}</li>
+            </ul>
+        </div>
+        """)
+    
+    # Schema
+    if 'schema' in results:
+        schema_rows = ''.join([f"<tr><td>{col}</td><td>{dtype}</td></tr>" 
+                               for col, dtype in results['schema'].items()])
+        html_parts.append(f"""
+        <div class="section">
+            <h2>📋 Schema</h2>
+            <table>
+                <thead>
+                    <tr><th>Column</th><th>Data Type</th></tr>
+                </thead>
+                <tbody>
+                    {schema_rows}
+                </tbody>
+            </table>
+        </div>
+        """)
+    
+    # QA Results
+    if 'qa_results' in results:
+        qa = results['qa_results']
+        qa_html = '<div class="section"><h2>✅ Data Quality Assessment</h2>'
+        
+        if qa.get('missing_values'):
+            qa_html += '<h3>Missing Values</h3><ul>'
+            for col, count in qa['missing_values'].items():
+                frac = qa.get('null_fraction', {}).get(col, 0)
+                pct = frac * 100
+                qa_html += f'<li><strong>{col}:</strong> {count} missing ({pct:.2f}%)</li>'
+            qa_html += '</ul>'
+        else:
+            qa_html += '<p class="success">✅ No missing values detected</p>'
+        
+        if qa.get('duplicate_rows', 0) > 0:
+            qa_html += f'<p class="warning">⚠️ <strong>Duplicate Rows:</strong> {qa["duplicate_rows"]} found</p>'
+        else:
+            qa_html += '<p class="success">✅ No duplicate rows</p>'
+        
+        qa_html += '</div>'
+        html_parts.append(qa_html)
+    
+    # Anomaly Results
+    if 'anomaly_results' in results:
+        anom = results['anomaly_results']
+        anom_html = '<div class="section"><h2>🔎 Anomaly Detection</h2>'
+        
+        if anom.get('outliers'):
+            anom_html += '<h3>Outliers Detected</h3><ul>'
+            for col, count in anom['outliers'].items():
+                anom_html += f'<li><strong>{col}:</strong> {count} outlier(s)</li>'
+            anom_html += '</ul>'
+        else:
+            anom_html += '<p class="success">✅ No outliers detected</p>'
+        
+        anom_html += '</div>'
+        html_parts.append(anom_html)
+    
+    # Insights
+    if 'insights' in results:
+        # Handle both dict (new format) and string (old format)
+        insights_data = results['insights']
+        if isinstance(insights_data, dict):
+            insights_text = insights_data.get('text', '')
+            source = insights_data.get('source', 'unknown')
+            gen_time = insights_data.get('generation_time', 0)
+            source_badge = f" (Generated by {source.upper()} in {gen_time:.2f}s)" if source != 'unknown' else ""
+        else:
+            insights_text = insights_data
+            source_badge = ""
+        
+        insights_text = insights_text.replace('\n', '<br>')
+        insights_text = insights_text.replace('**', '<strong>').replace('**', '</strong>')
+        html_parts.append(f"""
+        <div class="section">
+            <h2>💡 Insights & Analysis{source_badge}</h2>
+            <div class="insights-box">
+                {insights_text}
+            </div>
+        </div>
+        """)
+    
+    # Recommendations
+    if 'recommendations' in results and results['recommendations']:
+        recs_html = '<div class="section"><h2>🎯 Actionable Recommendations</h2><ul>'
+        for rec in results['recommendations']:
+            recs_html += f'<li>{rec}</li>'
+        recs_html += '</ul></div>'
+        html_parts.append(recs_html)
+    
+    # Complete HTML document
+    html_content = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Data Quality Report - adqia</title>
+    <style>
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+        }}
+        .container {{
+            background-color: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }}
+        h1 {{
+            color: #2c3e50;
+            border-bottom: 4px solid #3498db;
+            padding-bottom: 15px;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }}
+        h2 {{
+            color: #34495e;
+            margin-top: 40px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #ecf0f1;
+            font-size: 1.8em;
+        }}
+        h3 {{
+            color: #7f8c8d;
+            margin-top: 25px;
+            font-size: 1.3em;
+        }}
+        .timestamp {{
+            color: #95a5a6;
+            font-style: italic;
+            font-size: 0.95em;
+            margin-bottom: 30px;
+        }}
+        table {{
+            border-collapse: collapse;
+            width: 100%;
+            margin: 20px 0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }}
+        th, td {{
+            border: 1px solid #ddd;
+            padding: 14px;
+            text-align: left;
+        }}
+        th {{
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.9em;
+            letter-spacing: 0.5px;
+        }}
+        tr:nth-child(even) {{
+            background-color: #f8f9fa;
+        }}
+        tr:hover {{
+            background-color: #e8f4f8;
+            transition: background-color 0.3s;
+        }}
+        .section {{
+            margin: 30px 0;
+            padding: 20px;
+            border-left: 4px solid #3498db;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+        }}
+        .insights-box {{
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+            margin-top: 15px;
+            line-height: 1.8;
+        }}
+        .warning {{
+            color: #e67e22;
+            font-weight: 600;
+        }}
+        .success {{
+            color: #27ae60;
+            font-weight: 600;
+        }}
+        ul {{
+            line-height: 2;
+            padding-left: 25px;
+        }}
+        li {{
+            margin: 8px 0;
+        }}
+        .footer {{
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 1px solid #ecf0f1;
+            text-align: center;
+            color: #95a5a6;
+            font-size: 0.9em;
+        }}
+        strong {{
+            color: #2c3e50;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 Data Quality & Insights Report</h1>
+        <p class="timestamp">Generated: {timestamp}</p>
+        
+        {''.join(html_parts)}
+        
+        <div class="footer">
+            <p><em>Report generated by <strong>adqia</strong> (Auto Data QA & Insight Agent)</em></p>
+        </div>
+    </div>
+</body>
+</html>
+"""
+    
+    if output_path:
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(html_content)
+        logger.info(f"HTML report saved to {output_path}")
+    
+    return html_content
+
+
+def save_json_results(results: Dict[str, Any], output_path: str) -> None:
+    """
+    Save analysis results as JSON file.
+    
+    Args:
+        results: Dictionary containing analysis results
+        output_path: Path to save JSON file
+    """
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    
+    with open(output_path, 'w', encoding='utf-8') as f:
+        json.dump(results, f, indent=2, default=str)
+    
+    logger.info(f"JSON results saved to {output_path}")
+
+
+def create_report_bundle(results: Dict[str, Any], output_dir: str = "reports") -> Dict[str, str]:
+    """
+    Create a complete report bundle (Markdown, HTML, and JSON).
+    
+    Args:
+        results: Dictionary containing analysis results
+        output_dir: Directory to save reports
+    
+    Returns:
+        Dictionary with paths to generated files
+    """
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    os.makedirs(output_dir, exist_ok=True)
+    
+    paths = {
+        'markdown': os.path.join(output_dir, f"report_{timestamp}.md"),
+        'html': os.path.join(output_dir, f"report_{timestamp}.html"),
+        'json': os.path.join(output_dir, f"results_{timestamp}.json")
+    }
+    
+    generate_markdown_report(results, paths['markdown'])
+    generate_html_report(results, paths['html'])
+    save_json_results(results, paths['json'])
+    
+    logger.info(f"Report bundle created in {output_dir}")
+    
+    return paths
