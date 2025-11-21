@@ -21,6 +21,26 @@ def call_llm_stub(prompt: str) -> str:
     return "LLM integration not configured. Using fallback insights."
 
 
+def get_api_key():
+    """
+    Get Gemini API key from environment or Streamlit secrets.
+    """
+    # First try environment variable
+    api_key = os.getenv("GEMINI_API_KEY")
+    if api_key:
+        return api_key
+    
+    # Then try Streamlit secrets (for cloud deployment)
+    try:
+        import streamlit as st
+        if hasattr(st, 'secrets') and 'GEMINI_API_KEY' in st.secrets:
+            return st.secrets['GEMINI_API_KEY']
+    except Exception as e:
+        logger.debug(f"Could not access Streamlit secrets: {e}")
+    
+    return None
+
+
 class InsightAgent:
     """
     Agent responsible for generating insights and actionable recommendations
@@ -43,7 +63,7 @@ class InsightAgent:
             try:
                 import google.generativeai as genai  # optional dependency
 
-                api_key = os.getenv("GEMINI_API_KEY")
+                api_key = get_api_key()
                 if api_key:
                     genai.configure(api_key=api_key)
                     # Use gemini-2.5-flash (latest fast model)

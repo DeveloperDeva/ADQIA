@@ -67,15 +67,40 @@ def main():
     use_llm = st.sidebar.checkbox("Enable LLM Insights (requires API key)", value=False)
     z_threshold = st.sidebar.slider("Outlier Z-Score Threshold", 1.0, 5.0, 3.0, 0.1)
 
-    # Show Gemini status based on environment and user choice
+    # Show Gemini status - check both env var and Streamlit secrets
     gemini_key = os.getenv("GEMINI_API_KEY")
+    if not gemini_key:
+        try:
+            if hasattr(st, 'secrets') and 'GEMINI_API_KEY' in st.secrets:
+                gemini_key = st.secrets['GEMINI_API_KEY']
+        except:
+            pass
+    
     if gemini_key:
         if use_llm:
             st.sidebar.success("✅ Gemini LLM: ENABLED")
         else:
             st.sidebar.info("ℹ️ Gemini LLM: Available (check box to enable)")
     else:
-        st.sidebar.warning("⚠️ Gemini LLM: DISABLED (GEMINI_API_KEY not set)")
+        st.sidebar.warning("⚠️ Gemini LLM: DISABLED")
+        with st.sidebar.expander("How to enable Gemini AI"):
+            st.markdown("""
+            **For Streamlit Cloud:**
+            1. Go to App Settings
+            2. Click "Secrets" 
+            3. Add:
+            ```
+            GEMINI_API_KEY = "your_api_key"
+            ```
+            
+            **For local:**
+            Create `.env` file with:
+            ```
+            GEMINI_API_KEY=your_api_key
+            ```
+            
+            Get API key: [Google AI Studio](https://makersuite.google.com/app/apikey)
+            """)
     
     st.sidebar.markdown("---")
     st.sidebar.info(

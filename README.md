@@ -49,6 +49,33 @@ ADQIA/
 └── Dockerfile              # Container configuration
 ```
 
+```
+                     ┌──────────────────────┐
+                     │     Ingest Agent     │
+                     │ Loads CSV, profiles  │
+                     │ schema, logs metadata│
+                     └──────────┬───────────┘
+                                │
+            ┌───────────────────┴────────────────────┐
+            │                                        │
+┌───────────────────────┐               ┌─────────────────────────┐
+│     QA Agent          │               │  Anomaly Agent          │
+│ Missing values,       │               │ Outliers, shifts        │
+│ duplicates, stats     │               │ distribution analysis    │
+└───────────┬───────────┘               └──────────┬──────────────┘
+            │                                        │
+            └─────────────┬──────────────────────────┘
+                          │
+             ┌────────────┴──────────────┐
+             │    Insight Agent          │
+             │ Gemini LLM (if available) │
+             │ or rule-based fallback    │
+             └────────────┬──────────────┘
+                          │
+                     Report Output
+
+```
+
 ## 🚀 Quick Start
 
 ### Prerequisites
@@ -68,11 +95,25 @@ cd ADQIA
 pip install -r requirements.txt
 ```
 
-3. **Set up environment variables** (optional, for AI features)
+3. **Set up Gemini API key** (optional, for AI features)
+
+**For Local Development:**
 ```bash
 # Create .env file
 echo "GEMINI_API_KEY=your_api_key_here" > .env
 ```
+
+**For Streamlit Cloud Deployment:**
+1. Deploy your app on [Streamlit Cloud](https://streamlit.io/cloud)
+2. Go to your app dashboard
+3. Click on "⚙️ Settings" → "Secrets"
+4. Add the following:
+```toml
+GEMINI_API_KEY = "your_actual_api_key_here"
+```
+5. Click "Save"
+
+Get your API key from: [Google AI Studio](https://makersuite.google.com/app/apikey)
 
 ### Running the Application
 
@@ -96,6 +137,28 @@ docker build -t adqia .
 docker run -p 8501:8501 -e GEMINI_API_KEY=your_key adqia
 ```
 
+## 🌐 Streamlit Cloud Deployment
+
+### Quick Deploy
+1. Fork this repository
+2. Go to [share.streamlit.io](https://share.streamlit.io)
+3. Click "New app"
+4. Select your forked repository
+5. Set main file path: `app/app.py`
+6. Click "Deploy"
+
+### Add Gemini API Key (Important!)
+After deployment:
+1. Click "⚙️ Settings" on your app
+2. Go to "Secrets" section
+3. Add:
+```toml
+GEMINI_API_KEY = "your_api_key_here"
+```
+4. Click "Save" - app will automatically restart
+
+**Note**: Without the API key in secrets, the app will only use rule-based insights.
+
 ## 📖 Usage Guide
 
 ### Web Interface
@@ -108,6 +171,7 @@ docker run -p 8501:8501 -e GEMINI_API_KEY=your_key adqia
    - Enable/disable AI insights (requires API key)
    - Adjust outlier detection threshold
    - View Gemini status in sidebar
+   - Click "How to enable Gemini AI" if key is missing
 
 3. **Run Analysis**
    - Click "🚀 Run Analysis"
